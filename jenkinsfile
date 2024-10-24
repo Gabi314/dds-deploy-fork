@@ -1,54 +1,74 @@
-
 pipeline {
-agent any
+    agent any
     
     tools {
         maven 'Maven' // Reemplaza 'Maven 3.8.1' por el nombre que configuraste en la instalación de Maven
     }
 
     stages {
-        stage('Clonar Repositorio') {
-            steps {
-                git branch: 'main', url: 'https://github.com/Gabi314/dds-deploy-fork.git'
-            }
-        }
-        
         stage('Compilar Proyecto') {
             steps {
                 // Comando para compilar el proyecto usando Maven
                 sh 'mvn clean install'
             }
-        }
+        } 
+        stage('SonarQube Analysis') {
+            environment {
+                scannerHome = tool 'sonarScanner' // Nombre que diste al SonarQube Scanner en la configuración
+            }
+            steps {
+                withSonarQubeEnv('sonarqube') { // 'SonarQube' es el nombre que configuraste en la sección SonarQube Servers
 
+                    withCredentials([string(credentialsId: 'sonarqube', variable: 'SONARQUBE_TOKEN')]){
+                        sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=Pipeline-AppLibros -Dsonar.sources=src -Dsonar.java.binaries=target/classes -Dsonar.token=$SONARQUBE_TOKEN "
+                    }
+                }
+            }
+        }
         stage('Ejecutar Pruebas') {
             steps {
                 // Comando para ejecutar los tests usando Maven
                 sh 'mvn test'
             }
-            
-            steps {
-                // Comando para ejecutar los tests usando Maven
-                sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=AppLibros -Dsonar.projectName=AppLibros -Dsonar.host.url=http://192.168.1.38:9000 -Dsonar.token=sqp_316ff4fb27b76955551aadd6b22ece6cc7193b14'
+        }
+
+        stage('Build Docker Image'){
+
+
+            environment {
+                // Variables de entornO
+                DOCKERHUB_CREDENTIALS =  credentials('dockerhub-token')
+                DOCKERHUB_REPO = 'cibarraleonel/ddsdeploy-TP'
+            }
+
+            steps{
+                script {
+                    // Construye la imagen Docker con un tag "latest"
+                    docker.build("${env.DOCKERHUB_REPO}:latest")
+                }
             }
         }
+
+        stage('Push a DockerHub') {
+            steps {
+                script {
+                    // Inicia sesión en DockerHub
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-token') {
+                        // Hace el push de la imagen construida a DockerHub
+                        docker.image("${env.DOCKERHUB_REPO}:latest").push()
+                    }
+                }
+            }
+        }
+
+
         
-        
-        
-        
-    }
-    
-    
-    
-    
-    
+   }
 
     post {
         always {
-            archiveArtifacts artifacts: '*/target/.jar', allowEmptyArchive: true // Archiva los artefactos generados por Maven
-            junit '*/target/surefire-reports/.xml' // Publica resultados de las pruebas (JUnit/Surefire reports)
+            archiveArtifacts artifacts: '**/target/*.jar', allowEmptyArchive: true // Archiva los artefactos generados por Maven
+            junit '**/target/surefire-reports/*.xml' // Publica resultados de las pruebas (JUnit/Surefire reports)
         }
     }
-
-
-
 }
