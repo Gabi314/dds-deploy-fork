@@ -7,12 +7,14 @@ pipeline {
 
     stages {
         stage('Compilar Proyecto') {
+            agent any
             steps {
                 // Comando para compilar el proyecto usando Maven
                 sh 'mvn clean install'
             }
         } 
         stage('SonarQube Analysis') {
+            agent any
             environment {
                 scannerHome = tool 'sonarScanner' // Nombre que diste al SonarQube Scanner en la configuración
             }
@@ -26,43 +28,62 @@ pipeline {
             }
         }
         stage('Ejecutar Pruebas') {
+            agent any
+
+            
             steps {
                 // Comando para ejecutar los tests usando Maven
                 sh 'mvn test'
             }
         }
 
-        stage('Build Docker Image'){
-
+        stage('Build Docker and Push Image'){
+            agent any
 
             environment {
                 // Variables de entornO
-                DOCKERHUB_CREDENTIALS =  credentials('dockerhub-token')
-                DOCKERHUB_REPO = 'cibarraleonel/ddsdeploy-TP'
+                DOCKERHUB_PASSWORD =  credentials('dockerhub-password')
             }
 
             steps{
-                script {
-                    // Construye la imagen Docker con un tag "latest"
-                    docker.build("${env.DOCKERHUB_REPO}:latest")
+                sh 'docker build -t cibarraleonel/repo_libros .'
+                sh 'docker login -u cibarraleonel -p $DOCKERHUB_PASSWORD'
+                sh 'docker push cibarraleonel/repo_libros'
+                sh 'docker rmi cibarraleonel/repo_libros'
+            }
+
+            post {
+                success{
+                    sh 'echo Build, Login y Push OK!'
+                }
+                failure{
+                    sh 'echo Falló Build, Login y Push'
                 }
             }
         }
-
-        stage('Push a DockerHub') {
+        stage('Restart Appx Pod in Minikube') {
+            agent {
+                label 'minikube'
+            }
+            options {
+                skipDefaultCheckout(true)  // Evita que haga el checkout en VM2
+            }
             steps {
-                script {
-                    // Inicia sesión en DockerHub
-                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-token') {
-                        // Hace el push de la imagen construida a DockerHub
-                        docker.image("${env.DOCKERHUB_REPO}:latest").push()
-                    }
+                
+                sh 'docker pull cibarraleonel/repo_libros:latest'
+
+                // Reinicia el despliegue para cargar la nueva imagen
+                sh 'minikube kubectl rollout restart deployment appx'
+            }
+            post {
+                success{
+                    sh 'echo pull de image y restart del deploymen OK!'
+                }
+                failure{
+                    sh 'echo Falló restart de DEPLOYMENT'
                 }
             }
-        }
-
-
-        
+        }   
    }
 
     post {
