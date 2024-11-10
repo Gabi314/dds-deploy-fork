@@ -46,10 +46,10 @@ pipeline {
             }
 
             steps{
-                sh 'docker build -t cibarraleonel/repo_libros .'
-                sh 'docker login -u cibarraleonel -p $DOCKERHUB_PASSWORD'
-                sh 'docker push cibarraleonel/repo_libros'
-                sh 'docker rmi cibarraleonel/repo_libros'
+                sh 'docker build -t gabiac/repo_libros .'
+                sh 'docker login -u gabiac -p $DOCKERHUB_PASSWORD'
+                sh 'docker push gabiac/repo_libros'
+                sh 'docker rmi gabiac/repo_libros'
             }
 
             post {
